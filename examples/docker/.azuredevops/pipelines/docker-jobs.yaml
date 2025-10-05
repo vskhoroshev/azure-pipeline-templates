@@ -1,0 +1,43 @@
+trigger:
+  branches:
+    include:
+      - main
+
+resources:
+  repositories:
+    - repository: azure-pipeline-templates
+      type: github
+      endpoint: github-service-connection
+      name: vskhoroshev/azure-pipeline-templates
+      ref: refs/heads/main
+
+parameters:
+  - name: docker.tags
+    displayName: "Docker tags"
+    type: string
+    default: "build.$(Build.BuildId)"
+
+variables:
+  - name: docker.tags
+    ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+      value: "pr.$(System.PullRequest.PullRequestId)"
+    ${{ elseif eq(variables['Build.Reason'], 'IndividualCI') }}:
+      value: "$(PROJECT_VERSION)-build.$(Build.BuildId), latest"
+    ${{ else }}:
+      value: "${{ parameters['docker.tags'] }}"
+
+stages:
+  - stage: build_project
+    displayName: "Build project"
+    jobs:
+      - template: ./templates/jobs/docker-build.v1.yaml@azure-pipeline-templates
+        parameters:
+          docker.tags: "${{ variables['docker.tags'] }}"
+          docker.build.options: "--build-arg ALPINE_VERSION=$(ALPINE_VERSION)"
+
+  - stage: push_artifacts
+    displayName: "Push artifacts"
+    jobs:
+      - template: ./templates/jobs/docker-push.v1.yaml@azure-pipeline-templates
+        parameters:
+          docker.tags: "${{ variables['docker.tags'] }}"

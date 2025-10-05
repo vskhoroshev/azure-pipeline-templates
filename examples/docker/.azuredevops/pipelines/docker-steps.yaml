@@ -1,0 +1,54 @@
+trigger:
+  branches:
+    include:
+      - main
+
+resources:
+  repositories:
+    - repository: azure-pipeline-templates
+      type: github
+      endpoint: github-service-connection
+      name: vskhoroshev/azure-pipeline-templates
+      ref: refs/heads/main
+
+parameters:
+  - name: docker.tags
+    displayName: "Docker tags"
+    type: string
+    default: "build.$(Build.BuildId)"
+
+variables:
+  - name: docker.tags
+    ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+      value: "pr.$(System.PullRequest.PullRequestId)"
+    ${{ elseif eq(variables['Build.Reason'], 'IndividualCI') }}:
+      value: "$(PROJECT_VERSION)-build.$(Build.BuildId), latest"
+    ${{ else }}:
+      value: "${{ parameters['docker.tags'] }}"
+
+jobs:
+  - job: "build_push_docker_image"
+    displayName: "Build & Push Docker image"
+    pool:
+      vmImage: "ubuntu-latest"
+    steps:
+      - checkout: self
+      - checkout: azure-pipeline-templates
+
+      - template: ./templates/steps/variable.v1.yaml@azure-pipeline-templates
+        parameters:
+          variable.load.enabled: true
+
+      - template: ./templates/steps/docker.v1.yaml@azure-pipeline-templates
+        parameters:
+          docker.tags: "${{ variables['docker.tags'] }}"
+          docker.install.enabled: true
+          docker.install.qemu.enabled: true
+          docker.enable.containerd.enabled: true
+          docker.build.enabled: true
+          docker.build.options: "--build-arg ALPINE_VERSION=$(ALPINE_VERSION)"
+          docker.tag.enabled: true
+          docker.save.enabled: true
+          docker.load.enabled: true
+          docker.inspect.enabled: true
+          docker.push.enabled: true
